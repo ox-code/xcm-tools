@@ -1,4 +1,5 @@
 import type { TAssetInfo, WithAmount } from '@paraspell/assets'
+import { isAssetEqual } from '@paraspell/assets'
 
 import { getAssetBalanceInternal } from '../../balance'
 import type { TBuildOriginInfoOptions, TOriginXcmFeeInfo, TSelectedCurrencyInfo } from '../../types'
@@ -46,14 +47,27 @@ export const buildOriginInfo = async <TApi, TRes, TSigner, TCustomChain extends 
     asset: originFeeAsset
   })
 
-  const originBalanceFeeAfter = isOriginFeeAsset
-    ? originBalanceFee - amount
-    : originBalanceFee - originFee
+  // The fee asset shares a balance with one or more transferred assets (e.g. a native
+  // transfer, or an explicit feeAsset that is also being transferred). In that case the
+  // transferred amount(s) and the fee both come off the same balance, so both must be
+  // subtracted before assessing sufficiency.
+  const feeAssetSharesBalance =
+    isOriginFeeAsset || assets.some(asset => isAssetEqual(asset, originFeeAsset))
+
+  const sharedAssetSpend = feeAssetSharesBalance
+    ? assets
+        .filter(asset => isAssetEqual(asset, originFeeAsset))
+        .reduce((total, asset) => total + asset.amount, 0n) || amount
+    : 0n
+
+  const originBalanceFeeAfter = originBalanceFee - sharedAssetSpend - originFee
 
   return {
     selectedCurrency,
     xcmFee: {
-      sufficient: originBalanceFee >= originFee,
+      sufficient: feeAssetSharesBalance
+        ? originBalanceFeeAfter >= BigInt(originFeeAsset.existentialDeposit)
+        : originBalanceFee >= originFee,
       fee: originFee,
       balance: originBalanceFee,
       balanceAfter: originBalanceFeeAfter,

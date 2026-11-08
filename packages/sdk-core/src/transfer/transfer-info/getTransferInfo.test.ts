@@ -350,8 +350,13 @@ describe('getTransferInfo', () => {
 
     const result = await getTransferInfo(options)
 
-    expect(result.origin.xcmFee.balanceAfter).toBe(100000000n - BigInt(sameCurrency.amount))
-    expect(result.origin.xcmFee.balanceAfter).toBe(50000000n)
+    // The transferred asset is also the fee asset, so amount and fee both come off the
+    // same balance: balanceAfter must subtract both (issue #2443).
+    expect(result.origin.xcmFee.balanceAfter).toBe(
+      100000000n - BigInt(sameCurrency.amount) - 100000000n
+    )
+    expect(result.origin.xcmFee.balanceAfter).toBe(-50000000n)
+    expect(result.origin.xcmFee.sufficient).toBe(false)
     expect(usesOriginFeeAsset).toHaveBeenCalledWith(
       mockApi,
       ahOrigin,
